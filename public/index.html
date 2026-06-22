@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Product Browser</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0f0f13;
+      --surface: #1a1a24;
+      --border: #2a2a3a;
+      --accent: #6c63ff;
+      --accent-dim: #3d3880;
+      --text: #e8e8f0;
+      --text-muted: #888899;
+      --green: #22d3a0;
+      --radius: 10px;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Inter', system-ui, sans-serif;
+      min-height: 100vh;
+    }
+
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 18px 32px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    header h1 { font-size: 1.25rem; font-weight: 700; letter-spacing: -0.02em; }
+    header span { font-size: 0.8rem; color: var(--text-muted); background: var(--border); padding: 3px 10px; border-radius: 20px; }
+
+    .controls {
+      display: flex;
+      gap: 12px;
+      padding: 20px 32px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    select, button {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: var(--radius);
+      padding: 9px 16px;
+      font-size: 0.875rem;
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+      outline: none;
+    }
+    select:hover, button:hover { border-color: var(--accent); }
+    select { min-width: 180px; }
+
+    button.primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      font-weight: 600;
+      padding: 9px 22px;
+    }
+    button.primary:hover { background: #7b74ff; }
+    button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .total-badge {
+      margin-left: auto;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+    .total-badge strong { color: var(--green); }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+      gap: 16px;
+      padding: 0 32px 32px;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      transition: border-color 0.15s, transform 0.1s;
+    }
+    .card:hover { border-color: var(--accent-dim); transform: translateY(-2px); }
+
+    .card-name {
+      font-size: 0.95rem;
+      font-weight: 600;
+      line-height: 1.35;
+    }
+    .card-category {
+      font-size: 0.75rem;
+      color: var(--accent);
+      background: rgba(108, 99, 255, 0.12);
+      border-radius: 6px;
+      padding: 3px 9px;
+      display: inline-block;
+      width: fit-content;
+    }
+    .card-price {
+      font-size: 1.2rem;
+      font-weight: 700;
+      color: var(--green);
+      margin-top: 4px;
+    }
+    .card-date {
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      margin-top: auto;
+    }
+
+    .pagination {
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+      padding: 8px 32px 40px;
+      flex-wrap: wrap;
+    }
+
+    .status {
+      text-align: center;
+      padding: 60px 32px;
+      color: var(--text-muted);
+    }
+
+    .loader {
+      display: inline-block;
+      width: 18px; height: 18px;
+      border: 2px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      vertical-align: middle;
+      margin-right: 8px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .end-msg {
+      text-align: center;
+      padding: 20px;
+      color: var(--text-muted);
+      font-size: 0.85rem;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>⚡ Product Browser</h1>
+  <span id="db-count">200k products</span>
+</header>
+
+<div class="controls">
+  <select id="category-filter">
+    <option value="">All Categories</option>
+  </select>
+  <select id="limit-select">
+    <option value="20">20 per page</option>
+    <option value="40">40 per page</option>
+    <option value="100">100 per page</option>
+  </select>
+  <button class="primary" onclick="resetAndLoad()">Apply</button>
+  <div class="total-badge" id="total-badge"></div>
+</div>
+
+<div class="grid" id="grid"></div>
+<div id="status" class="status"></div>
+<div class="pagination" id="pagination"></div>
+
+<script>
+  const API = window.location.hostname === 'localhost'
+    ? 'http://localhost:3000'
+    : ''; 
+
+  let cursorStack = [null]; 
+  let currentPage = 0;
+  let currentCategory = '';
+  let currentLimit = 20;
+
+  async function loadCategories() {
+    try {
+      const res = await fetch(`${API}/api/products/categories`);
+      const { categories } = await res.json();
+      const sel = document.getElementById('category-filter');
+      categories.forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = c; opt.textContent = c;
+        sel.appendChild(opt);
+      });
+    } catch(e) { console.error('Failed to load categories', e); }
+  }
+
+  async function loadPage(cursor) {
+    const grid = document.getElementById('grid');
+    const status = document.getElementById('status');
+    const pagination = document.getElementById('pagination');
+    const limit = parseInt(document.getElementById('limit-select').value);
+
+    grid.innerHTML = '';
+    pagination.innerHTML = '';
+    status.innerHTML = '<span class="loader"></span>Loading products…';
+
+    const params = new URLSearchParams({ limit });
+    if (cursor) params.set('cursor', cursor);
+    if (currentCategory) params.set('category', currentCategory);
+
+    try {
+      const res = await fetch(`${API}/api/products?${params}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const { products, nextCursor, count } = await res.json();
+
+      status.innerHTML = '';
+
+      if (products.length === 0) {
+        status.innerHTML = 'No products found.';
+        return;
+      }
+
+      document.getElementById('total-badge').innerHTML =
+        `Showing <strong>${count}</strong> products · Page ${currentPage + 1}`;
+
+      products.forEach(p => {
+        const card = document.createElement('div');
+        card.className = 'card';
+        card.innerHTML = `
+          <div class="card-category">${p.category}</div>
+          <div class="card-name">${p.name}</div>
+          <div class="card-price">₹${parseFloat(p.price).toFixed(2)}</div>
+          <div class="card-date">Added ${new Date(p.created_at).toLocaleDateString('en-US', { year:'numeric', month:'short', day:'numeric' })}</div>
+        `;
+        grid.appendChild(card);
+      });
+
+      // Pagination buttons
+      if (currentPage > 0) {
+        const prev = document.createElement('button');
+        prev.textContent = '← Previous';
+        prev.onclick = () => {
+          currentPage--;
+          cursorStack.pop();
+          loadPage(cursorStack[currentPage]);
+        };
+        pagination.appendChild(prev);
+      }
+
+      if (nextCursor) {
+       
+        if (cursorStack.length <= currentPage + 1) {
+          cursorStack.push(nextCursor);
+        } else {
+          cursorStack[currentPage + 1] = nextCursor;
+        }
+
+        const next = document.createElement('button');
+        next.textContent = 'Next →';
+        next.className = 'primary';
+        next.onclick = () => {
+          currentPage++;
+          loadPage(cursorStack[currentPage]);
+        };
+        pagination.appendChild(next);
+      } else {
+        pagination.innerHTML += '<div class="end-msg">You\'ve reached the end!</div>';
+      }
+
+    } catch(e) {
+      status.innerHTML = `Error: ${e.message}. Is the API running?`;
+    }
+  }
+
+  function resetAndLoad() {
+    currentCategory = document.getElementById('category-filter').value;
+    currentLimit = parseInt(document.getElementById('limit-select').value);
+    cursorStack = [null];
+    currentPage = 0;
+    loadPage(null);
+  }
+
+
+  loadCategories();
+  loadPage(null);
+</script>
+</body>
+</html>
