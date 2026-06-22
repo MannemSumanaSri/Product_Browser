@@ -95,10 +95,10 @@ async function createTable() {
   `);
 
   // Index for category filtering — allows fast WHERE category = '...' lookups
-  await pool.query(`
-    CREATE INDEX IF NOT EXISTS idx_products_category
-    ON products (category)
-  `);
+ await pool.query(`
+  CREATE INDEX IF NOT EXISTS idx_products_category_cursor
+  ON products (category, created_at DESC, id DESC)
+`);
 
   console.log("Table and indexes ready.");
 }
